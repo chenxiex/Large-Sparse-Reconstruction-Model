@@ -1,0 +1,29 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+# All rights reserved.
+
+# This source code is licensed under the license found in the
+# LICENSE file in the root directory of this source tree.
+
+mse:
+  rgb: 1.0
+  albedo: 0.0
+  roughness: 0.0
+  metallic: 0.0
+  normal: 0.0
+  numerical_normal: 0.0
+  surface_point: 10.0
+  camera_rot: 1.0
+  camera_trans: 1.0
+  camera_intr: 1.0
+  mask: 1.0
+  depth: 10.0
+
+perceptual:
+  rgb: 2.0
+  albedo: 0.0
+  roughness: 0.0
+  metallic: 0.0
+  normal: 0.0
+  numerical_normal: 0.0
+  mask: 0.0
+  depth: 0.0
