@@ -635,6 +635,12 @@ def main() -> int:
     return 0
 
 
+def error_message(error: Exception) -> str:
+    if isinstance(error, urllib.error.HTTPError):
+        return f"{error} (URL: {error.geturl()})"
+    return str(error)
+
+
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
@@ -644,5 +650,5 @@ if __name__ == "__main__":
         urllib.error.HTTPError,
         subprocess.CalledProcessError,
     ) as error:
-        print(f"setup_dev: {error}", file=sys.stderr)
+        print(f"setup_dev: {error_message(error)}", file=sys.stderr)
         raise SystemExit(1) from None

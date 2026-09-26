@@ -7,6 +7,7 @@ import io
 import json
 import tempfile
 import unittest
+import urllib.error
 from pathlib import Path
 from unittest.mock import patch
 
@@ -14,6 +15,15 @@ import setup_dev
 
 
 class SetupDevTests(unittest.TestCase):
+    def test_http_error_message_includes_url(self) -> None:
+        url = "https://huggingface.co/api/models/example/tree/main"
+        error = urllib.error.HTTPError(url, 403, "Forbidden", None, None)
+        self.addCleanup(error.close)
+        self.assertEqual(
+            setup_dev.error_message(error),
+            f"HTTP Error 403: Forbidden (URL: {url})",
+        )
+
     def test_selection_and_manifest_targets(self) -> None:
         with tempfile.TemporaryDirectory(dir=setup_dev.ROOT) as directory:
             root = Path(directory)
