@@ -48,6 +48,13 @@ The available components are `rgb`, `brdf`, `gso`, `orb`, `dtc`, `dinov3`, `blen
 
 Hugging Face downloads respect `HF_ENDPOINT` for a mirror and `HF_TOKEN` for gated files. Obtain access to the model and DINOv3 weights before setup. In Colab, change to the cloned repository directory and prefix these commands with `!`, for example `!python setup_dev.py setup --allow-large-downloads --dinov3-weight-file /path/to/dinov3_vith16plus.pth` followed by `!python setup_dev.py smoke`.
 
+You can put these settings in a `.env` file at the project root. `setup_dev.py` reads it for every command, including downloads, and existing shell environment variables take precedence. The file is ignored by Git.
+
+```dotenv
+HF_ENDPOINT=https://huggingface.co
+HF_TOKEN=your_token_here
+```
+
 ### Manual setup
 
 ```sh

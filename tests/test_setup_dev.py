@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import os
 import tempfile
 import unittest
 import urllib.error
@@ -15,6 +16,38 @@ import setup_dev
 
 
 class SetupDevTests(unittest.TestCase):
+    def test_main_loads_dotenv_and_preserves_existing_environment(self) -> None:
+        with tempfile.TemporaryDirectory(dir=setup_dev.ROOT) as directory:
+            root = Path(directory)
+            (root / ".env").write_text(
+                "# Local settings\n"
+                "HF_ENDPOINT=https://mirror.example # comment\n"
+                "export HF_TOKEN='token with spaces'\n"
+                'HF_HUB_CACHE="cache with spaces"\n',
+                encoding="utf-8",
+            )
+            with (
+                patch.object(setup_dev, "ROOT", root),
+                patch.dict(os.environ, {"HF_TOKEN": "from-shell"}, clear=True),
+                patch("sys.argv", ["setup_dev.py", "_download"]),
+                patch.object(setup_dev, "download_helper") as download,
+            ):
+                self.assertEqual(setup_dev.main(), 0)
+                self.assertEqual(setup_dev.endpoint(), "https://mirror.example")
+                self.assertEqual(os.environ["HF_TOKEN"], "from-shell")
+                self.assertEqual(os.environ["HF_HUB_CACHE"], "cache with spaces")
+                download.assert_called_once_with()
+
+    def test_missing_env_file_is_optional(self) -> None:
+        with tempfile.TemporaryDirectory(dir=setup_dev.ROOT) as directory:
+            with (
+                patch.object(setup_dev, "ROOT", Path(directory)),
+                patch("sys.argv", ["setup_dev.py", "_download"]),
+                patch.object(setup_dev, "download_helper") as download,
+            ):
+                self.assertEqual(setup_dev.main(), 0)
+                download.assert_called_once_with()
+
     def test_http_error_message_includes_url(self) -> None:
         url = "https://huggingface.co/api/models/example/tree/main"
         error = urllib.error.HTTPError(url, 403, "Forbidden", None, None)
