@@ -15,6 +15,41 @@ All commands below assume your current working directory is the project root
 
 ## Setup
 
+### Automated development setup
+
+`setup_dev.py` can prepare a development environment for a notebook, Web VS Code, or an SSH session. Run it from the project root. The default `smoke` profile selects the RGB checkpoints, one complete GSO example scene, DINOv3, and Blender; it is the smallest selection intended to run `test_rgb.sh`, but the weights still require several gigabytes.
+
+```sh
+python setup_dev.py plan
+python setup_dev.py setup --allow-large-downloads \
+    --dinov3-weight-file /path/to/dinov3_vith16plus.pth
+python setup_dev.py verify
+python setup_dev.py smoke
+```
+
+`plan` previews the resource list, target paths, and estimated download size without downloading. `setup` requires `--allow-large-downloads` when the planned download exceeds 1 GB. If dependencies are already installed in this project's `.conda` environment, pass `--skip-deps` to `setup`.
+
+To choose resources individually and store large files on mounted storage:
+
+```sh
+python setup_dev.py plan --profile custom --components rgb,gso,dinov3,blender \
+    --datasets-dir /mnt/data/lsrm/datasets \
+    --checkpoints-dir /mnt/data/lsrm/checkpoints \
+    --dinov3-weights-dir /mnt/data/lsrm/dinov3-weights
+python setup_dev.py setup --profile custom --components rgb,gso,dinov3,blender \
+    --datasets-dir /mnt/data/lsrm/datasets \
+    --checkpoints-dir /mnt/data/lsrm/checkpoints \
+    --dinov3-weights-dir /mnt/data/lsrm/dinov3-weights \
+    --dinov3-weight-url '<authorized DINOv3 .pth URL>' \
+    --allow-large-downloads
+```
+
+The available components are `rgb`, `brdf`, `gso`, `orb`, `dtc`, `dinov3`, `blender`, and `env`. The script links externally stored datasets and checkpoints into the project. DINOv3 code stays in `../dinov3`, linked from `./dinov3`; its weight file can live in `--dinov3-weights-dir` and is linked into the DINOv3 clone. For an existing authorized weight file, use `--dinov3-weight-file /path/to/dinov3_vith16plus.pth`; `--dinov3-weight-url` accepts an authorized download URL. Blender stays in `../blender/blender-4.5.3-linux-x64/`, as expected by the test scripts.
+
+Hugging Face downloads respect `HF_ENDPOINT` for a mirror and `HF_TOKEN` for gated files. Obtain access to the model and DINOv3 weights before setup. In Colab, change to the cloned repository directory and prefix these commands with `!`, for example `!python setup_dev.py setup --allow-large-downloads --dinov3-weight-file /path/to/dinov3_vith16plus.pth` followed by `!python setup_dev.py smoke`.
+
+### Manual setup
+
 ```sh
 conda create -n lsrm python=3.10 -y
 conda activate lsrm
