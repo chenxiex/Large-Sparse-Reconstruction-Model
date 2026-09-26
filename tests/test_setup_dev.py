@@ -7,10 +7,11 @@ import io
 import json
 import os
 import tempfile
+import types
 import unittest
 import urllib.error
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import setup_dev
 
@@ -155,12 +156,13 @@ class SetupDevTests(unittest.TestCase):
                 "target": str(target),
                 "size": 7,
             }
+            download = Mock(return_value=str(cached))
+            hub = types.ModuleType("huggingface_hub")
+            hub.hf_hub_download = download
             with (
                 patch.object(setup_dev, "ROOT", root),
                 patch("sys.stdin", io.StringIO(json.dumps([item]))),
-                patch(
-                    "huggingface_hub.hf_hub_download", return_value=str(cached)
-                ) as download,
+                patch.dict("sys.modules", {"huggingface_hub": hub}),
             ):
                 setup_dev.download_helper()
             self.assertEqual(target.read_bytes(), b"fixture")
@@ -168,6 +170,23 @@ class SetupDevTests(unittest.TestCase):
             self.assertEqual(
                 download.call_args.kwargs["cache_dir"], target.parents[1] / ".hf-cache"
             )
+
+    def test_direct_download_reports_progress_and_replaces_target(self) -> None:
+        with tempfile.TemporaryDirectory(dir=setup_dev.ROOT) as directory:
+            target = Path(directory) / "asset.bin"
+            target.write_bytes(b"old")
+            response = io.BytesIO(b"new content")
+            response.headers = {"Content-Length": "11", "Content-Type": "application/octet-stream"}
+            output = io.StringIO()
+            with (
+                patch("urllib.request.urlopen", return_value=response),
+                patch("time.monotonic", side_effect=[0, 11]),
+                patch("sys.stderr", output),
+            ):
+                setup_dev.download_url("https://example.com/asset.bin", target)
+            self.assertEqual(target.read_bytes(), b"new content")
+            self.assertIn("asset.bin: 11.0 B / 11.0 B (100%)", output.getvalue())
+            self.assertIn("Downloaded asset.bin: 11.0 B", output.getvalue())
 
 
 if __name__ == "__main__":

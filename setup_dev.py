@@ -12,6 +12,8 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -133,6 +135,14 @@ def human_size(size: int) -> str:
     return f"{size / 1_000_000_000:.2f} GB"
 
 
+def human_bytes(size: int) -> str:
+    for unit in ("B", "KB", "MB", "GB"):
+        if size < 1000 or unit == "GB":
+            return f"{size:.1f} {unit}"
+        size /= 1000
+    raise AssertionError("unreachable")
+
+
 def external_weight_size(args: argparse.Namespace) -> int | None:
     if args.dinov3_weight_file:
         return Path(args.dinov3_weight_file).expanduser().stat().st_size
@@ -238,6 +248,7 @@ def rewrite_hf_url(url: str) -> str:
 def download_url(url: str, target: Path) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     url = rewrite_hf_url(url)
+    print(f"Downloading {target}", file=sys.stderr, flush=True)
     headers: dict[str, str] = {}
     if urllib.parse.urlsplit(url).netloc == urllib.parse.urlsplit(endpoint()).netloc:
         token = os.environ.get("HF_TOKEN")
@@ -255,8 +266,35 @@ def download_url(url: str, target: Path) -> None:
                     raise ValueError(
                         "download returned an HTML page instead of a file; check access credentials"
                     )
-                shutil.copyfileobj(source, temp)
+                length = source.headers.get("Content-Length")
+                total = int(length) if length and length.isdigit() else None
+                received = 0
+                last_report = time.monotonic()
+                interactive = sys.stderr.isatty()
+                while chunk := source.read(1024 * 1024):
+                    temp.write(chunk)
+                    received += len(chunk)
+                    now = time.monotonic()
+                    if now - last_report >= (1 if interactive else 10):
+                        progress = f"{human_bytes(received)}"
+                        if total:
+                            progress += f" / {human_bytes(total)} ({received / total:.0%})"
+                        prefix = "\r" if interactive else ""
+                        print(
+                            f"{prefix}{target.name}: {progress}",
+                            end="" if interactive else "\n",
+                            file=sys.stderr,
+                            flush=True,
+                        )
+                        last_report = now
+                if interactive:
+                    print(file=sys.stderr)
             temporary.replace(target)
+            print(
+                f"Downloaded {target.name}: {human_bytes(received)}",
+                file=sys.stderr,
+                flush=True,
+            )
         except BaseException:
             temporary.unlink(missing_ok=True)
             raise
@@ -387,6 +425,7 @@ def hub_download(
         groups.setdefault(category, []).append(item)
     for category, group in groups.items():
         asset_root = locations.get(category, ROOT)
+        print(f"Downloading {category} assets ({len(group)} files)...", flush=True)
         env = os.environ.copy()
         env.setdefault("HF_HUB_CACHE", str(asset_root / ".hf-cache"))
         env.setdefault("HF_XET_CACHE", str(asset_root / ".hf-xet"))
@@ -404,7 +443,7 @@ def download_helper() -> None:
     from huggingface_hub import hf_hub_download
 
     items: list[dict[str, Any]] = json.load(sys.stdin)
-    for item in items:
+    for index, item in enumerate(items, 1):
         target = Path(item["target"])
         if target.is_file() and target.stat().st_size == item["size"]:
             continue
@@ -417,6 +456,21 @@ def download_helper() -> None:
         )
         cache = Path(os.environ.get("HF_HUB_CACHE", str(asset_root / ".hf-cache")))
         target.parent.mkdir(parents=True, exist_ok=True)
+        print(f"[{index}/{len(items)}] Downloading {source}", file=sys.stderr, flush=True)
+        stop = threading.Event()
+
+        def report_wait() -> None:
+            started = time.monotonic()
+            while not stop.wait(15):
+                elapsed = int(time.monotonic() - started)
+                print(
+                    f"Still downloading {source} ({elapsed}s elapsed)...",
+                    file=sys.stderr,
+                    flush=True,
+                )
+
+        reporter = threading.Thread(target=report_wait, daemon=True)
+        reporter.start()
         try:
             cached = Path(
                 hf_hub_download(
@@ -431,6 +485,9 @@ def download_helper() -> None:
             raise ValueError(
                 f"cannot download {source}; check repository access, HF_TOKEN, and HF_ENDPOINT: {error}"
             ) from error
+        finally:
+            stop.set()
+            reporter.join()
         temporary = target.with_name(target.name + ".partial")
         temporary.unlink(missing_ok=True)
         try:
@@ -443,6 +500,7 @@ def download_helper() -> None:
             temporary.unlink(missing_ok=True)
         if not target.is_file() or target.stat().st_size != item["size"]:
             raise ValueError(f"download incomplete: {target}")
+        print(f"[{index}/{len(items)}] Ready: {source}", file=sys.stderr, flush=True)
 
 
 def verify(components: tuple[str, ...], locations: dict[str, Path]) -> bool:
@@ -597,6 +655,7 @@ def main() -> int:
             raise ValueError(
                 "dependency download size is unknown; rerun with --allow-large-downloads or --skip-deps"
             )
+        print("Preparing Python environment...", flush=True)
         python = prepare_environment(args, locations)
         for category in ("datasets", "checkpoints"):
             if any(
@@ -607,10 +666,13 @@ def main() -> int:
             ):
                 locations[category].mkdir(parents=True, exist_ok=True)
                 safe_link(ROOT / category, locations[category])
+        print("Preparing Hugging Face assets...", flush=True)
         hub_download(items, locations, python)
         if "dinov3" in components:
+            print("Preparing DINOv3...", flush=True)
             prepare_dinov3(args, locations)
         if "blender" in components:
+            print("Preparing Blender...", flush=True)
             prepare_blender(locations)
         return 0 if verify(components, locations) else 1
     if not verify(components, locations):

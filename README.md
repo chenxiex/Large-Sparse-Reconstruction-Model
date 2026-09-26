@@ -29,6 +29,8 @@ python setup_dev.py smoke
 
 `plan` previews the resource list, target paths, and estimated download size without downloading. `setup` requires `--allow-large-downloads` when the planned download exceeds 1 GB. If dependencies are already installed in this project's `.conda` environment, pass `--skip-deps` to `setup`.
 
+During `setup`, the script names the current stage before downloading. Direct downloads show transferred bytes and a percentage when the server provides a file size. Hugging Face downloads show the current file and report every 15 seconds while it is still being fetched; the Hub client may also display its own progress bar.
+
 To choose resources individually and store large files on mounted storage:
 
 ```sh
