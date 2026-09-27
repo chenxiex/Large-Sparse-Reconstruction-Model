@@ -20,8 +20,6 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-from dotenv import load_dotenv
-
 ROOT = Path(__file__).resolve().parent
 REPO = "facebook/Large-Sparse-Reconstruction-Model"
 COMPONENTS = ("rgb", "brdf", "gso", "orb", "dtc", "dinov3", "blender", "env")
@@ -627,10 +625,12 @@ def parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
-    load_dotenv(ROOT / ".env")
     if len(sys.argv) > 1 and sys.argv[1] == "_download":
         download_helper()
         return 0
+    from dotenv import load_dotenv
+
+    load_dotenv(ROOT / ".env")
     args = parser().parse_args()
     if args.dinov3_weight_file and args.dinov3_weight_url:
         raise ValueError("choose either --dinov3-weight-file or --dinov3-weight-url")
