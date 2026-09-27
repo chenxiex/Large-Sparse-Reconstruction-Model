@@ -45,3 +45,4 @@ dependencies:
         - tqdm
         - matplotlib
         - intel-cmplr-lib-rt
+        - python-dotenv
