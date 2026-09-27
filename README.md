@@ -29,6 +29,20 @@ python setup_dev.py smoke
 
 `plan` previews the resource list, target paths, and estimated download size without downloading. `setup` requires `--allow-large-downloads` when the planned download exceeds 1 GB. If dependencies are already installed in this project's `.conda` environment, pass `--skip-deps` to `setup`.
 
+To download assets before connecting a GPU, run `download` with the same profile, paths, and DINOv3 weight option you will use for `setup`:
+
+```sh
+python setup_dev.py plan --dinov3-weight-file /path/to/dinov3_vith16plus.pth
+python setup_dev.py download --allow-large-downloads \
+    --dinov3-weight-file /path/to/dinov3_vith16plus.pth
+# Connect the GPU after the download completes.
+python setup_dev.py setup --allow-large-downloads \
+    --dinov3-weight-file /path/to/dinov3_vith16plus.pth
+python setup_dev.py smoke
+```
+
+`download` fetches the selected checkpoints, datasets, DINOv3 code and weights, and Blender without checking for a GPU or installing CUDA dependencies. Hugging Face downloads use a small Python environment under `.setup-tools/download-venv`. Re-running `setup` reuses files already present at their expected paths; keep the same storage mounted when connecting the GPU. The GPU is needed for `install.sh`'s CUDA extension build and for `smoke` inference.
+
 During `setup`, the script names the current stage before downloading. Direct downloads show transferred bytes and a percentage when the server provides a file size. Hugging Face downloads show the current file and report every 15 seconds while it is still being fetched; the Hub client may also display its own progress bar.
 
 To choose resources individually and store large files on mounted storage:

@@ -49,6 +49,39 @@ class SetupDevTests(unittest.TestCase):
                 self.assertEqual(setup_dev.main(), 0)
                 download.assert_called_once_with()
 
+    def test_download_skips_gpu_environment_and_verification(self) -> None:
+        with tempfile.TemporaryDirectory(dir=setup_dev.ROOT) as directory:
+            root = Path(directory)
+            args = [
+                "setup_dev.py",
+                "download",
+                "--profile",
+                "custom",
+                "--components",
+                "rgb",
+                "--allow-large-downloads",
+            ]
+            item = {
+                "source": "checkpoints/rgb/sparse.pth",
+                "target": str(root / "checkpoints" / "rgb" / "sparse.pth"),
+                "size": 7,
+            }
+            with (
+                patch.object(setup_dev, "ROOT", root),
+                patch("sys.argv", args),
+                patch.object(setup_dev, "manifest", return_value=[item]),
+                patch.object(setup_dev, "download_python", return_value=root / "python"),
+                patch.object(setup_dev, "hub_download") as download,
+                patch.object(setup_dev, "prepare_environment") as environment,
+                patch.object(setup_dev, "verify") as verify,
+            ):
+                self.assertEqual(setup_dev.main(), 0)
+                download.assert_called_once_with(
+                    [item], setup_dev.paths(setup_dev.parser().parse_args(args[1:])), root / "python"
+                )
+                environment.assert_not_called()
+                verify.assert_not_called()
+
     def test_http_error_message_includes_url(self) -> None:
         url = "https://huggingface.co/api/models/example/tree/main"
         error = urllib.error.HTTPError(url, 403, "Forbidden", None, None)

@@ -410,6 +410,16 @@ def prepare_environment(args: argparse.Namespace, locations: dict[str, Path]) ->
     return python
 
 
+def download_python() -> Path:
+    """Keep download-only dependencies separate from the CUDA environment."""
+    python = ROOT / ".setup-tools" / "download-venv" / "bin" / "python"
+    if not python.is_file():
+        subprocess.run(
+            [sys.executable, "-m", "venv", str(python.parent.parent)], check=True
+        )
+    return python
+
+
 def hub_download(
     items: list[dict[str, Any]], locations: dict[str, Path], python: Path
 ) -> None:
@@ -603,7 +613,7 @@ def verify(components: tuple[str, ...], locations: dict[str, Path]) -> bool:
 
 def parser() -> argparse.ArgumentParser:
     cli = argparse.ArgumentParser(description=__doc__)
-    cli.add_argument("command", choices=("plan", "setup", "verify", "smoke"))
+    cli.add_argument("command", choices=("plan", "download", "setup", "verify", "smoke"))
     cli.add_argument("--profile", choices=("smoke", "custom"), default="smoke")
     cli.add_argument("--components", help="Comma-separated: " + ",".join(COMPONENTS))
     cli.add_argument("--datasets-dir")
@@ -626,7 +636,7 @@ def main() -> int:
         raise ValueError("choose either --dinov3-weight-file or --dinov3-weight-url")
     components = selected(args)
     locations = paths(args)
-    if args.command in ("plan", "setup"):
+    if args.command in ("plan", "download", "setup"):
         items = manifest(args, components)
         pending = show_plan(args, components, items)
         if args.command == "plan":
@@ -651,12 +661,15 @@ def main() -> int:
             raise ValueError(
                 "DINOv3 weight unavailable; provide --dinov3-weight-file or --dinov3-weight-url"
             )
-        if not args.allow_large_downloads and not args.skip_deps:
+        if args.command == "setup" and not args.allow_large_downloads and not args.skip_deps:
             raise ValueError(
                 "dependency download size is unknown; rerun with --allow-large-downloads or --skip-deps"
             )
-        print("Preparing Python environment...", flush=True)
-        python = prepare_environment(args, locations)
+        if args.command == "setup":
+            print("Preparing Python environment...", flush=True)
+            python = prepare_environment(args, locations)
+        else:
+            python = download_python() if items else Path(sys.executable)
         for category in ("datasets", "checkpoints"):
             if any(
                 x in components
@@ -674,7 +687,7 @@ def main() -> int:
         if "blender" in components:
             print("Preparing Blender...", flush=True)
             prepare_blender(locations)
-        return 0 if verify(components, locations) else 1
+        return 0 if args.command == "download" or verify(components, locations) else 1
     if not verify(components, locations):
         return 1
     if args.command == "smoke":
