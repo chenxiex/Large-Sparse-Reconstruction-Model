@@ -18,7 +18,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 ROOT = Path(__file__).resolve().parent
 REPO = "facebook/Large-Sparse-Reconstruction-Model"
@@ -385,17 +385,34 @@ def prepare_blender(locations: dict[str, Path]) -> None:
     ) as directory:
         staging = Path(directory)
         with tarfile.open(archive, "r:xz") as tar:
-            for member in tar.getmembers():
-                destination = (staging / member.name).resolve()
-                if not destination.is_relative_to(staging.resolve()):
-                    raise ValueError(f"unsafe Blender archive member: {member.name}")
-            tar.extractall(staging, filter="data")
+            tar.extractall(staging, members=safe_tar_members(tar, staging))
         extracted = staging / "blender-4.5.3-linux-x64"
         if not (extracted / "blender").is_file():
             raise ValueError(
                 "Blender extraction did not produce the expected executable"
             )
         extracted.rename(target)
+
+
+def safe_tar_members(tar: tarfile.TarFile, staging: Path) -> Iterator[tarfile.TarInfo]:
+    """Reject archive entries that could escape the extraction directory."""
+    root = staging.resolve()
+    for member in tar:
+        destination = (root / member.name).resolve()
+        if not destination.is_relative_to(root):
+            raise ValueError(f"unsafe Blender archive member: {member.name}")
+        if member.issym():
+            link_destination = (destination.parent / member.linkname).resolve()
+            if not link_destination.is_relative_to(root):
+                raise ValueError(f"unsafe Blender archive link: {member.name}")
+        elif member.islnk():
+            link_destination = (root / member.linkname).resolve()
+            if not link_destination.is_relative_to(root) or not link_destination.is_file():
+                raise ValueError(f"unsafe Blender archive link: {member.name}")
+        elif not (member.isfile() or member.isdir()):
+            raise ValueError(f"unsupported Blender archive member: {member.name}")
+        member.mode &= 0o755
+        yield member
 
 
 def conda_executable() -> Path:
