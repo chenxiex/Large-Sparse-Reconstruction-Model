@@ -685,12 +685,12 @@ def parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
-    from dotenv import load_dotenv
-
-    load_dotenv(ROOT / ".env")
     if len(sys.argv) > 1 and sys.argv[1] == "_download":
         download_helper()
         return 0
+    from dotenv import load_dotenv
+
+    load_dotenv(ROOT / ".env")
     args = parser().parse_args()
     if args.dinov3_weight_file and args.dinov3_weight_url:
         raise ValueError("choose either --dinov3-weight-file or --dinov3-weight-url")
