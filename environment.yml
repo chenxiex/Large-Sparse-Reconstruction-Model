@@ -25,7 +25,7 @@ dependencies:
         - nvidia-cusolver-cu12
         - nvidia-curand-cu12
         - nvidia-cufft-cu12
-        - flash-attn @ https://github.com/Dao-AILab/flash-attention/releases/download/v2.5.9.post1/flash_attn-2.5.9.post1+cu122torch2.4cxx11abiFALSE-cp310-cp310-linux_x86_64.whl
+        - flash-attn @ https://gh-proxy.org/https://github.com/Dao-AILab/flash-attention/releases/download/v2.5.9.post1/flash_attn-2.5.9.post1+cu122torch2.4cxx11abiFALSE-cp310-cp310-linux_x86_64.whl
         - numpy<2
         - trimesh
         - plyfile
