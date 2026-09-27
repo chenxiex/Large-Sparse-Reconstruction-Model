@@ -27,7 +27,7 @@ python setup_dev.py verify
 python setup_dev.py smoke
 ```
 
-`plan` previews the resource list, target paths, and estimated download size without downloading. `setup` requires `--allow-large-downloads` when the planned download exceeds 1 GB. If dependencies are already installed in this project's `.conda` environment, pass `--skip-deps` to `setup`.
+`plan` previews the resource list, target paths, and estimated download size without downloading. `setup` requires `--allow-large-downloads` when the planned download exceeds 1 GB. It creates or updates this project's `.conda` environment from `environment.yml`. If dependencies are already installed, pass `--skip-deps` to `setup`.
 
 To download assets before connecting a GPU, run `download` with the same profile, paths, and DINOv3 weight option you will use for `setup`:
 
@@ -41,7 +41,7 @@ python setup_dev.py setup --allow-large-downloads \
 python setup_dev.py smoke
 ```
 
-`download` fetches the selected checkpoints, datasets, DINOv3 code and weights, and Blender without checking for a GPU or installing CUDA dependencies. Hugging Face downloads use a small Python environment under `.setup-tools/download-venv`. Re-running `setup` reuses files already present at their expected paths; keep the same storage mounted when connecting the GPU. The GPU is needed for `install.sh`'s CUDA extension build and for `smoke` inference.
+`download` fetches the selected checkpoints, datasets, DINOv3 code and weights, and Blender without checking for a GPU or installing CUDA dependencies. Hugging Face downloads use a small Python environment under `.setup-tools/download-venv`. Re-running `setup` reuses files already present at their expected paths; keep the same storage mounted when connecting the GPU. The GPU is needed for the nerfacc CUDA extension build and for `smoke` inference.
 
 During `setup`, the script names the current stage before downloading. Direct downloads show transferred bytes and a percentage when the server provides a file size. Hugging Face downloads show the current file and report every 15 seconds while it is still being fetched; the Hub client may also display its own progress bar.
 
@@ -64,11 +64,14 @@ The available components are `rgb`, `brdf`, `gso`, `orb`, `dtc`, `dinov3`, `blen
 
 Hugging Face downloads respect `HF_ENDPOINT` for a mirror and `HF_TOKEN` for gated files. Obtain access to the model and DINOv3 weights before setup. In Colab, change to the cloned repository directory and prefix these commands with `!`, for example `!python setup_dev.py setup --allow-large-downloads --dinov3-weight-file /path/to/dinov3_vith16plus.pth` followed by `!python setup_dev.py smoke`.
 
+The automated setup installs torch 2.4.0, torchvision 0.19.0, and torchaudio 2.4.0 from your configured PyPI index. Set `PIP_INDEX_URL` to a mirror that carries these versions and their NVIDIA CUDA 12.1 dependencies. Remove any `download.pytorch.org` entry from `PIP_EXTRA_INDEX_URL` and pip configuration: pip checks all configured indexes and does not give the primary index priority. The PyTorch3D and flash-attn wheels still come directly from their upstream release URLs. `install.sh` remains available for the manual setup below and still uses the official PyTorch CUDA index.
+
 You can put these settings in a `.env` file at the project root. `setup_dev.py` reads it for every command, including downloads, and existing shell environment variables take precedence. The file is ignored by Git.
 
 ```dotenv
 HF_ENDPOINT=https://huggingface.co
 HF_TOKEN=your_token_here
+PIP_INDEX_URL=https://your-pypi-mirror.example/simple
 ```
 
 ### Manual setup

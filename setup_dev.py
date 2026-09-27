@@ -29,6 +29,49 @@ BLENDER_URL = (
 )
 BLENDER_BYTES = 377_397_328
 LARGE_LIMIT = 1_000_000_000
+ACTIVATE_HOOK = """\
+export NVCC_PREPEND_FLAGS="-ccbin=$CONDA_PREFIX/bin/x86_64-conda-linux-gnu-c++"
+export NVCC_CCBIN="$CONDA_PREFIX/bin/x86_64-conda-linux-gnu-c++"
+export TORCH_EXTENSIONS_DIR="$CONDA_PREFIX/var/torch_extensions"
+mkdir -p "$TORCH_EXTENSIONS_DIR"
+
+__cap="$(python -c 'import torch; m,n=torch.cuda.get_device_capability(0); print(f"{m}.{n}")' 2>/dev/null || true)"
+export TORCH_CUDA_ARCH_LIST="${__cap:-8.0;8.6;8.9;9.0+PTX}"
+unset __cap
+
+__nvidia_pkg_dir="$(python -c 'import nvidia,os; print(os.path.dirname(nvidia.__file__))' 2>/dev/null || true)"
+if [ -n "$__nvidia_pkg_dir" ]; then
+    for __d in cublas cusparse cusolver curand cufft cuda_runtime cuda_cccl cuda_nvcc nvjitlink nvtx; do
+        [ -d "$__nvidia_pkg_dir/$__d/include" ] && \\
+            CPATH="$__nvidia_pkg_dir/$__d/include:${CPATH:-}"
+    done
+    export CPATH
+fi
+unset __nvidia_pkg_dir __d
+"""
+CUDA_CHECK = """\
+import torch
+import torchvision
+import torchaudio
+import nerfacc
+import flash_attn
+from pytorch3d import _C
+from nerfacc import ray_aabb_intersect
+
+assert torch.__version__.split("+")[0] == "2.4.0", torch.__version__
+assert torchvision.__version__.split("+")[0] == "0.19.0", torchvision.__version__
+assert torchaudio.__version__.split("+")[0] == "2.4.0", torchaudio.__version__
+assert torch.version.cuda == "12.1", torch.version.cuda
+assert torch.cuda.is_available(), "CUDA GPU is unavailable"
+rays_o = torch.zeros(1, 3, device="cuda")
+rays_d = torch.tensor([[0.0, 0.0, 1.0]], device="cuda")
+aabbs = torch.tensor([[-1.0, -1.0, -1.0, 1.0, 1.0, 1.0]], device="cuda")
+ray_aabb_intersect(rays_o, rays_d, aabbs)
+print("torch:", torch.__version__, "cuda:", torch.version.cuda)
+print("nerfacc:", nerfacc.__version__)
+print("flash_attn:", flash_attn.__version__)
+print("pytorch3d _C and nerfacc CUDA extension OK")
+"""
 
 
 def endpoint() -> str:
@@ -383,27 +426,44 @@ def prepare_environment(args: argparse.Namespace, locations: dict[str, Path]) ->
             raise ValueError("--skip-deps requires an existing .conda environment")
         return python
     if platform.system() != "Linux" or platform.machine() not in ("x86_64", "AMD64"):
-        raise ValueError("install.sh requires Linux x86_64")
+        raise ValueError("environment.yml requires Linux x86_64")
     if shutil.which("nvidia-smi") is None:
         raise ValueError(
-            "install.sh requires an NVIDIA GPU and nvidia-smi; use --skip-deps only with a prepared environment"
+            "environment setup requires an NVIDIA GPU and nvidia-smi; use --skip-deps only with a prepared environment"
         )
     conda = conda_executable()
     run_env = os.environ.copy()
     run_env.setdefault("CONDA_PKGS_DIRS", str(ROOT / ".setup-cache" / "conda"))
     run_env.setdefault("PIP_CACHE_DIR", str(ROOT / ".setup-cache" / "pip"))
-    if not python.is_file():
-        subprocess.run(
-            [str(conda), "create", "-y", "-p", str(env_dir), "python=3.10"],
-            check=True,
-            env=run_env,
-        )
+    operation = "update" if python.is_file() else "create"
+    command = [str(conda), "env", operation]
+    if operation == "create":
+        command.append("-y")
+    command.extend(["-p", str(env_dir), "-f", str(ROOT / "environment.yml")])
+    subprocess.run(
+        command,
+        check=True,
+        env=run_env,
+        cwd=ROOT,
+    )
+    hook = env_dir / "etc" / "conda" / "activate.d" / "zz_lsrm_env.sh"
+    hook.parent.mkdir(parents=True, exist_ok=True)
+    hook.write_text(ACTIVATE_HOOK, encoding="utf-8")
     install_env = run_env | {
         "CONDA_PREFIX": str(env_dir),
         "PATH": f"{env_dir / 'bin'}:{conda.parent}:{run_env.get('PATH', '')}",
     }
     subprocess.run(
-        ["bash", str(ROOT / "install.sh")], cwd=ROOT, check=True, env=install_env
+        [
+            "bash", "-c",
+            'set -e; source "$CONDA_PREFIX/etc/conda/activate.d/zz_lsrm_env.sh"; '
+            '"$CONDA_PREFIX/bin/python" -',
+        ],
+        input=CUDA_CHECK,
+        text=True,
+        cwd=ROOT,
+        check=True,
+        env=install_env,
     )
     return python
 
@@ -625,12 +685,12 @@ def parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
-    if len(sys.argv) > 1 and sys.argv[1] == "_download":
-        download_helper()
-        return 0
     from dotenv import load_dotenv
 
     load_dotenv(ROOT / ".env")
+    if len(sys.argv) > 1 and sys.argv[1] == "_download":
+        download_helper()
+        return 0
     args = parser().parse_args()
     if args.dinov3_weight_file and args.dinov3_weight_url:
         raise ValueError("choose either --dinov3-weight-file or --dinov3-weight-url")

@@ -17,6 +17,62 @@ import setup_dev
 
 
 class SetupDevTests(unittest.TestCase):
+    def test_prepare_environment_uses_yaml_and_inherits_pip_index(self) -> None:
+        for existing in (False, True):
+            with self.subTest(existing=existing):
+                with tempfile.TemporaryDirectory(dir=setup_dev.ROOT) as directory:
+                    root = Path(directory)
+                    env_dir = root / ".conda"
+                    python = env_dir / "bin" / "python"
+                    if existing:
+                        python.parent.mkdir(parents=True)
+                        python.touch()
+                    with (
+                        patch.object(setup_dev, "ROOT", root),
+                        patch.object(setup_dev, "conda_executable", return_value=Path("/fake/conda")),
+                        patch.object(setup_dev.platform, "system", return_value="Linux"),
+                        patch.object(setup_dev.platform, "machine", return_value="x86_64"),
+                        patch.object(setup_dev.shutil, "which", return_value="/fake/nvidia-smi"),
+                        patch.dict(os.environ, {"PIP_INDEX_URL": "https://mirror.example/simple"}),
+                        patch.object(setup_dev.subprocess, "run") as run,
+                    ):
+                        result = setup_dev.prepare_environment(
+                            argparse.Namespace(skip_deps=False), {"env": env_dir}
+                        )
+                    self.assertEqual(result, python)
+                    command = run.call_args_list[0]
+                    self.assertEqual(
+                        command.args[0],
+                        [
+                            "/fake/conda", "env", "update" if existing else "create",
+                            *([] if existing else ["-y"]),
+                            "-p", str(env_dir), "-f", str(root / "environment.yml"),
+                        ],
+                    )
+                    self.assertEqual(
+                        command.kwargs["env"]["PIP_INDEX_URL"],
+                        "https://mirror.example/simple",
+                    )
+                    self.assertIn(
+                        "export NVCC_PREPEND_FLAGS=",
+                        (env_dir / "etc/conda/activate.d/zz_lsrm_env.sh").read_text(),
+                    )
+                    self.assertIn("ray_aabb_intersect", run.call_args_list[1].kwargs["input"])
+
+    def test_prepare_environment_skip_deps_does_not_run_conda(self) -> None:
+        with tempfile.TemporaryDirectory(dir=setup_dev.ROOT) as directory:
+            python = Path(directory) / ".conda/bin/python"
+            python.parent.mkdir(parents=True)
+            python.touch()
+            with patch.object(setup_dev.subprocess, "run") as run:
+                self.assertEqual(
+                    setup_dev.prepare_environment(
+                        argparse.Namespace(skip_deps=True), {"env": python.parent.parent}
+                    ),
+                    python,
+                )
+            run.assert_not_called()
+
     def test_main_loads_dotenv_and_preserves_existing_environment(self) -> None:
         with tempfile.TemporaryDirectory(dir=setup_dev.ROOT) as directory:
             root = Path(directory)
