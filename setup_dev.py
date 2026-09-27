@@ -25,7 +25,7 @@ REPO = "facebook/Large-Sparse-Reconstruction-Model"
 COMPONENTS = ("rgb", "brdf", "gso", "orb", "dtc", "dinov3", "blender", "env")
 SMOKE = ("rgb", "gso", "dinov3", "blender")
 BLENDER_URL = (
-    "https://mirrors.aliyun.com/blender/release/Blender4.5/blender-4.5.3-linux-x64.tar.xz"
+    "https://mirror.nju.edu.cn/blender/release/Blender4.5/blender-4.5.3-linux-x64.tar.xz"
 )
 BLENDER_BYTES = 377_397_328
 LARGE_LIMIT = 1_000_000_000
