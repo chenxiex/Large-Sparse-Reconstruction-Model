@@ -75,6 +75,32 @@ class SetupDevTests(unittest.TestCase):
                 )
             run.assert_not_called()
 
+    def test_verify_checks_torchmetrics_for_dinov3(self) -> None:
+        with tempfile.TemporaryDirectory(dir=setup_dev.ROOT) as directory:
+            root = Path(directory)
+            python = root / ".conda/bin/python"
+            python.parent.mkdir(parents=True)
+            python.touch()
+            dinov3 = root / "dinov3"
+            dinov3.mkdir()
+            (dinov3 / "hubconf.py").touch()
+            (dinov3 / "dinov3_vith16plus.pth").touch()
+            output = io.StringIO()
+            with (
+                patch.object(setup_dev, "ROOT", root),
+                patch.object(
+                    setup_dev.subprocess,
+                    "run",
+                    return_value=types.SimpleNamespace(returncode=1),
+                ) as run,
+                patch("sys.stderr", output),
+            ):
+                self.assertFalse(
+                    setup_dev.verify(("dinov3",), {"env": python.parent.parent})
+                )
+            self.assertIn("import torchmetrics", run.call_args.args[0][2])
+            self.assertIn("torchmetrics", output.getvalue())
+
     def test_main_loads_dotenv_and_preserves_existing_environment(self) -> None:
         with tempfile.TemporaryDirectory(dir=setup_dev.ROOT) as directory:
             root = Path(directory)

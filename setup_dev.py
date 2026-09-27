@@ -645,11 +645,16 @@ def verify(components: tuple[str, ...], locations: dict[str, Path]) -> bool:
         if (ROOT / name).resolve() != locations[name].resolve():
             problems.append(f"{name} points to the wrong location")
     if python.is_file():
+        imports = "import torch, nerfacc, flash_attn; from pytorch3d import _C"
+        packages = "torch, nerfacc, flash_attn, pytorch3d"
+        if "dinov3" in components:
+            imports += "; import torchmetrics"
+            packages += ", torchmetrics"
         check = subprocess.run(
             [
                 str(python),
                 "-c",
-                "import torch, nerfacc, flash_attn; from pytorch3d import _C",
+                imports,
             ],
             capture_output=True,
             text=True,
@@ -657,7 +662,7 @@ def verify(components: tuple[str, ...], locations: dict[str, Path]) -> bool:
         )
         if check.returncode:
             problems.append(
-                "Python dependencies failed to import (torch, nerfacc, flash_attn, pytorch3d)"
+                f"Python dependencies failed to import ({packages})"
             )
     if problems:
         print(

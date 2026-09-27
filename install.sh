@@ -134,6 +134,7 @@ pip install \
     pyyaml \
     rich \
     timm \
+    torchmetrics \
     pillow \
     tqdm \
     matplotlib \
