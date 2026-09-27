@@ -685,6 +685,8 @@ def parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    # The download subprocess inherits .env values from its parent.
+    # Its Python environment may not have dotenv installed.
     if len(sys.argv) > 1 and sys.argv[1] == "_download":
         download_helper()
         return 0

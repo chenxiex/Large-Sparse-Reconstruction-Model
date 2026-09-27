@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import builtins
 import io
 import json
 import os
+import runpy
 import tempfile
 import types
 import unittest
@@ -86,24 +88,61 @@ class SetupDevTests(unittest.TestCase):
             with (
                 patch.object(setup_dev, "ROOT", root),
                 patch.dict(os.environ, {"HF_TOKEN": "from-shell"}, clear=True),
-                patch("sys.argv", ["setup_dev.py", "_download"]),
-                patch.object(setup_dev, "download_helper") as download,
+                patch("sys.argv", ["setup_dev.py", "verify"]),
+                patch.object(setup_dev, "verify", return_value=True) as verify,
             ):
                 self.assertEqual(setup_dev.main(), 0)
                 self.assertEqual(setup_dev.endpoint(), "https://mirror.example")
                 self.assertEqual(os.environ["HF_TOKEN"], "from-shell")
                 self.assertEqual(os.environ["HF_HUB_CACHE"], "cache with spaces")
-                download.assert_called_once_with()
+                verify.assert_called_once()
+
+    def test_download_helper_does_not_import_dotenv(self) -> None:
+        original_import = builtins.__import__
+        hub = types.ModuleType("huggingface_hub")
+        hub.hf_hub_download = Mock()
+
+        def import_without_dotenv(name: str, *args: object, **kwargs: object) -> object:
+            if name == "dotenv":
+                raise ModuleNotFoundError("No module named 'dotenv'")
+            return original_import(name, *args, **kwargs)
+
+        with (
+            patch("sys.argv", ["setup_dev.py", "_download"]),
+            patch("sys.stdin", io.StringIO("[]")),
+            patch.dict("sys.modules", {"huggingface_hub": hub}),
+            patch("builtins.__import__", side_effect=import_without_dotenv),
+        ):
+            with self.assertRaises(SystemExit) as result:
+                runpy.run_path(str(setup_dev.ROOT / "setup_dev.py"), run_name="__main__")
+        self.assertEqual(result.exception.code, 0)
+        hub.hf_hub_download.assert_not_called()
 
     def test_missing_env_file_is_optional(self) -> None:
         with tempfile.TemporaryDirectory(dir=setup_dev.ROOT) as directory:
             with (
                 patch.object(setup_dev, "ROOT", Path(directory)),
-                patch("sys.argv", ["setup_dev.py", "_download"]),
-                patch.object(setup_dev, "download_helper") as download,
+                patch("sys.argv", ["setup_dev.py", "verify"]),
+                patch.object(setup_dev, "verify", return_value=True) as verify,
             ):
                 self.assertEqual(setup_dev.main(), 0)
-                download.assert_called_once_with()
+                verify.assert_called_once()
+
+    def test_hub_download_passes_parent_environment_to_helper(self) -> None:
+        item = {"source": "checkpoints/rgb/sparse.pth", "target": "/tmp/sparse.pth", "size": 7}
+        with (
+            patch.dict(
+                os.environ,
+                {"HF_TOKEN": "from-dotenv", "HF_ENDPOINT": "https://mirror.example"},
+            ),
+            patch.object(setup_dev.subprocess, "run") as run,
+        ):
+            setup_dev.hub_download(
+                [item], {"checkpoints": setup_dev.ROOT / "checkpoints"}, Path("python")
+            )
+        helper_env = run.call_args_list[1].kwargs["env"]
+        self.assertEqual(helper_env["HF_TOKEN"], "from-dotenv")
+        self.assertEqual(helper_env["HF_ENDPOINT"], "https://mirror.example")
 
     def test_download_skips_gpu_environment_and_verification(self) -> None:
         with tempfile.TemporaryDirectory(dir=setup_dev.ROOT) as directory:
